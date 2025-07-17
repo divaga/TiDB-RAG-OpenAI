@@ -215,17 +215,8 @@ class RAGSystem:
             cursor = self.db_connection.cursor()
 
             # Query with vec_cosine_distance and VECTOR syntax
-            query_sql = f"""
-                SELECT
-                    id,
-                    filename,
-                    content,
-                    vec_cosine_distance(embedding, {embedding_str}) AS similarity
-                FROM documents
-                ORDER BY similarity ASC
-                LIMIT {top_k}
-            """
-
+            query_sql = "SELECT id,filename,content,vec_cosine_distance(embedding,'" + str(embedding_str) + "') AS similarity FROM documents ORDER BY similarity ASC LIMIT " + str(top_k)
+           
             cursor.execute(query_sql)
             results = cursor.fetchall()
             cursor.close()
