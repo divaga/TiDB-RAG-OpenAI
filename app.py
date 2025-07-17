@@ -204,7 +204,7 @@ class RAGSystem:
     
     def search_similar_chunks(self, query: str, top_k: int = 3) -> List[Dict[str, Any]]:
         """Search for similar chunks using cosine similarity in TiDB"""
-        #try:
+        try:
             query_embedding = self.generate_embedding(query)
             if not query_embedding:
                 return []
@@ -231,9 +231,9 @@ class RAGSystem:
                 }
                 for row in results
             ]
-        #except Error as e:
-        #    st.error(f"Search failed: {str(e)}")
-        #    return []
+        except Error as e:
+            st.error(f"Search failed: {str(e)}")
+            return []
    
     def generate_answer(self, query: str, context_chunks: List[Dict[str, Any]]) -> str:
         """Generate answer using OpenAI GPT"""
