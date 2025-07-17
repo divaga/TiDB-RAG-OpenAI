@@ -210,8 +210,7 @@ class RAGSystem:
                 return []
 
             # Format the embedding as a TiDB VECTOR literal
-            embedding_str = "VECTOR[" + ",".join(f"{x:.6f}" for x in query_embedding) + "]"
-            st.write(embedding_str)
+            embedding_str = "[" + ",".join(f"{x:.6f}" for x in query_embedding) + "]"
 
             cursor = self.db_connection.cursor()
 
