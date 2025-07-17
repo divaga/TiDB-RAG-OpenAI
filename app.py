@@ -213,7 +213,7 @@ class RAGSystem:
             cursor = self.db_connection.cursor()
             
             # Get all documents and calculate cosine similarity in Python
-            cursor.execute("SELECT id, filename, content, vec_cosine_distance(embedding,'" + str(query_embedding) + "') AS dist FROM documents ORDER BY dist ASC")
+            cursor.execute("SELECT id, filename, content, vec_cosine_distance(embedding,'" + str(query_embedding) + "') AS similarity FROM documents ORDER BY similarity ASC")
             results = cursor.fetchall()
             cursor.close()
             
