@@ -203,45 +203,45 @@ class RAGSystem:
             return False
     
     def search_similar_chunks(self, query: str, top_k: int = 3) -> List[Dict[str, Any]]:
-    """Search for similar chunks using cosine similarity in TiDB"""
-    try:
-        query_embedding = self.generate_embedding(query)
-        if not query_embedding:
+        """Search for similar chunks using cosine similarity in TiDB"""
+        try:
+            query_embedding = self.generate_embedding(query)
+            if not query_embedding:
+                return []
+
+            # Format the embedding as a TiDB VECTOR literal
+            embedding_str = "VECTOR[" + ",".join(f"{x:.6f}" for x in query_embedding) + "]"
+
+            cursor = self.db_connection.cursor()
+
+            # Query with vec_cosine_distance and VECTOR syntax
+            query_sql = f"""
+                SELECT
+                    id,
+                    filename,
+                    content,
+                    vec_cosine_distance(embedding, {embedding_str}) AS similarity
+                FROM documents
+                ORDER BY similarity ASC
+                LIMIT {top_k}
+            """
+
+            cursor.execute(query_sql)
+            results = cursor.fetchall()
+            cursor.close()
+
+            return [
+                {
+                    "id": row[0],
+                    "filename": row[1],
+                    "content": row[2],
+                    "similarity": row[3]
+                }
+                for row in results
+            ]
+        except Error as e:
+            st.error(f"Search failed: {str(e)}")
             return []
-
-        # Format the embedding as a TiDB VECTOR literal
-        embedding_str = "VECTOR[" + ",".join(f"{x:.6f}" for x in query_embedding) + "]"
-
-        cursor = self.db_connection.cursor()
-
-        # Query with vec_cosine_distance and VECTOR syntax
-        query_sql = f"""
-            SELECT
-                id,
-                filename,
-                content,
-                vec_cosine_distance(embedding, {embedding_str}) AS similarity
-            FROM documents
-            ORDER BY similarity ASC
-            LIMIT {top_k}
-        """
-
-        cursor.execute(query_sql)
-        results = cursor.fetchall()
-        cursor.close()
-
-        return [
-            {
-                "id": row[0],
-                "filename": row[1],
-                "content": row[2],
-                "similarity": row[3]
-            }
-            for row in results
-        ]
-    except Error as e:
-        st.error(f"Search failed: {str(e)}")
-        return []
    
     def generate_answer(self, query: str, context_chunks: List[Dict[str, Any]]) -> str:
         """Generate answer using OpenAI GPT"""
