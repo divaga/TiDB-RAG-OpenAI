@@ -39,11 +39,26 @@ class RAGSystem:
     def initialize_openai(self, api_key: str):
         """Initialize OpenAI client"""
         try:
-            openai.api_key = api_key
-            self.openai_client = openai
-            # Test the connection
+            if not api_key or not api_key.strip():
+                st.error("OpenAI API key is empty")
+                return False
+            
+            if not api_key.startswith('sk-'):
+                st.error("OpenAI API key should start with 'sk-'")
+                return False
+            
+            # Initialize the OpenAI client
+            self.openai_client = openai.OpenAI(api_key=api_key)
+            
+            # Test the connection with a simple call
             self.openai_client.models.list()
             return True
+        except openai.AuthenticationError as e:
+            st.error(f"OpenAI authentication failed: Invalid API key")
+            return False
+        except openai.RateLimitError as e:
+            st.error(f"OpenAI rate limit exceeded: {str(e)}")
+            return False
         except Exception as e:
             st.error(f"OpenAI initialization failed: {str(e)}")
             return False
@@ -69,7 +84,7 @@ class RAGSystem:
                 filename VARCHAR(255) NOT NULL,
                 chunk_index INT NOT NULL,
                 content TEXT NOT NULL,
-                embedding VECTOR(1536) NOT NULL,
+                embedding VECTOR NOT NULL,
                 file_hash VARCHAR(64) NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 INDEX idx_filename (filename),
@@ -126,11 +141,21 @@ class RAGSystem:
     def generate_embedding(self, text: str) -> List[float]:
         """Generate embedding for text"""
         try:
+            if not self.openai_client:
+                st.error("OpenAI client not initialized")
+                return []
+                
             response = self.openai_client.embeddings.create(
                 model=self.embedding_model,
                 input=text
             )
             return response.data[0].embedding
+        except openai.AuthenticationError as e:
+            st.error(f"OpenAI authentication failed: Check your API key")
+            return []
+        except openai.RateLimitError as e:
+            st.error(f"OpenAI rate limit exceeded: {str(e)}")
+            return []
         except Exception as e:
             st.error(f"Embedding generation failed: {str(e)}")
             return []
@@ -185,33 +210,63 @@ class RAGSystem:
             
             cursor = self.db_connection.cursor()
             
-            # Use TiDB's vector search with cosine similarity
-            search_query = """
-            SELECT filename, content, VEC_COSINE_DISTANCE(embedding, %s) as similarity
-            FROM documents
-            ORDER BY similarity ASC
-            LIMIT %s
-            """
-            
-            cursor.execute(search_query, (json.dumps(query_embedding), top_k))
+            # Get all documents and calculate cosine similarity in Python
+            # Note: This is less efficient than native vector search but works with standard MySQL
+            cursor.execute("SELECT id, filename, content, embedding FROM documents")
             results = cursor.fetchall()
             cursor.close()
             
-            return [
-                {
-                    "filename": row[0],
-                    "content": row[1],
-                    "similarity": row[2]
-                }
-                for row in results
-            ]
+            if not results:
+                return []
+            
+            # Calculate cosine similarity
+            similarities = []
+            for row in results:
+                doc_id, filename, content, embedding_json = row
+                try:
+                    doc_embedding = json.loads(embedding_json)
+                    similarity = self.cosine_similarity(query_embedding, doc_embedding)
+                    similarities.append({
+                        "id": doc_id,
+                        "filename": filename,
+                        "content": content,
+                        "similarity": similarity
+                    })
+                except json.JSONDecodeError:
+                    continue
+            
+            # Sort by similarity (higher is better for cosine similarity)
+            similarities.sort(key=lambda x: x["similarity"], reverse=True)
+            
+            return similarities[:top_k]
         except Error as e:
             st.error(f"Search failed: {str(e)}")
             return []
     
+    def cosine_similarity(self, vec1: List[float], vec2: List[float]) -> float:
+        """Calculate cosine similarity between two vectors"""
+        try:
+            import numpy as np
+            vec1 = np.array(vec1)
+            vec2 = np.array(vec2)
+            
+            dot_product = np.dot(vec1, vec2)
+            norm_vec1 = np.linalg.norm(vec1)
+            norm_vec2 = np.linalg.norm(vec2)
+            
+            if norm_vec1 == 0 or norm_vec2 == 0:
+                return 0.0
+            
+            return dot_product / (norm_vec1 * norm_vec2)
+        except Exception:
+            return 0.0
+    
     def generate_answer(self, query: str, context_chunks: List[Dict[str, Any]]) -> str:
         """Generate answer using OpenAI GPT"""
         try:
+            if not self.openai_client:
+                return "OpenAI client not initialized"
+                
             # Prepare context
             context = "\n\n".join([chunk["content"] for chunk in context_chunks])
             
@@ -236,6 +291,10 @@ Answer:"""
             )
             
             return response.choices[0].message.content
+        except openai.AuthenticationError as e:
+            return "Authentication failed: Please check your OpenAI API key"
+        except openai.RateLimitError as e:
+            return "Rate limit exceeded: Please try again later"
         except Exception as e:
             st.error(f"Answer generation failed: {str(e)}")
             return "Sorry, I couldn't generate an answer at this time."
