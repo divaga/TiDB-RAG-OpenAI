@@ -327,16 +327,16 @@ def main():
         openai_api_key = st.text_input(
             "OpenAI API Key", 
             type="password",
-            value=os.getenv("OPENAI_API_KEY", "")
+            value=st.secrets("OPENAI_API_KEY", "")
         )
         
         # Database configuration
         st.subheader("TiDB Configuration")
-        db_host = st.text_input("Host", value=os.getenv("TIDB_HOST", ""))
-        db_port = st.number_input("Port", value=int(os.getenv("TIDB_PORT", "4000")))
-        db_user = st.text_input("User", value=os.getenv("TIDB_USER", ""))
-        db_password = st.text_input("Password", type="password", value=os.getenv("TIDB_PASSWORD", ""))
-        db_name = st.text_input("Database", value=os.getenv("TIDB_DATABASE", ""))
+        db_host = st.text_input("Host", value=st.secrets("TIDB_HOST", ""))
+        db_port = st.number_input("Port", value=int(st.secrets("TIDB_PORT", "4000")))
+        db_user = st.text_input("User", value=st.secrets("TIDB_USER", ""))
+        db_password = st.text_input("Password", type="password", value=st.secrets("TIDB_PASSWORD", ""))
+        db_name = st.text_input("Database", value=st.secrets("TIDB_DATABASE", ""))
         
         # Initialize button
         if st.button("Initialize System"):
