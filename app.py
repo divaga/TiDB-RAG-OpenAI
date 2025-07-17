@@ -224,7 +224,6 @@ class RAGSystem:
         except Error as e:
             st.error(f"Search failed: {str(e)}")
             return []
-    
    
     def generate_answer(self, query: str, context_chunks: List[Dict[str, Any]]) -> str:
         """Generate answer using OpenAI GPT"""
