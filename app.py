@@ -86,7 +86,7 @@ class RAGSystem:
                 filename VARCHAR(255) NOT NULL,
                 chunk_index INT NOT NULL,
                 content TEXT NOT NULL,
-                embedding JSON NOT NULL,
+                embedding VECTOR NOT NULL,
                 file_hash VARCHAR(64) NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 INDEX idx_filename (filename),
@@ -193,9 +193,7 @@ class RAGSystem:
             for i, chunk in enumerate(chunks):
                 embedding = self.generate_embedding(chunk)
                 if embedding:
-                    # Convert embedding to JSON string for storage
-                    embedding_json = json.dumps(embedding)
-                    cursor.execute(insert_query, (filename, i, chunk, embedding_json, file_hash))
+                    cursor.execute(insert_query, (filename, i, chunk, str(embedding), file_hash))
             
             cursor.close()
             return True
