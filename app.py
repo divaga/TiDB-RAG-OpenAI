@@ -211,6 +211,7 @@ class RAGSystem:
 
             # Format the embedding as a TiDB VECTOR literal
             embedding_str = "VECTOR[" + ",".join(f"{x:.6f}" for x in query_embedding) + "]"
+            st.write(embedding_str)
 
             cursor = self.db_connection.cursor()
 
@@ -230,9 +231,9 @@ class RAGSystem:
                 }
                 for row in results
             ]
-        except Error as e:
-            st.error(f"Search failed: {str(e)}")
-            return []
+        #except Error as e:
+        #    st.error(f"Search failed: {str(e)}")
+        #    return []
    
     def generate_answer(self, query: str, context_chunks: List[Dict[str, Any]]) -> str:
         """Generate answer using OpenAI GPT"""
