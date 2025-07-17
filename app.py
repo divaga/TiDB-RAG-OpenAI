@@ -193,7 +193,7 @@ class RAGSystem:
             for i, chunk in enumerate(chunks):
                 embedding = self.generate_embedding(chunk)
                 if embedding:
-                    embedding_str = "VECTOR[" + ",".join(f"{x:.6f}" for x in query_embedding) + "]"
+                    embedding_str = "[" + ",".join(f"{x:.6f}" for x in embedding) + "]"
                     cursor.execute(insert_query, (filename, i, chunk, embedding_str, file_hash))
             
             cursor.close()
