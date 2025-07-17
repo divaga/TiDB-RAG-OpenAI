@@ -26,6 +26,8 @@ if 'last_query_time' not in st.session_state:
     st.session_state.last_query_time = None
 if 'db_initialized' not in st.session_state:
     st.session_state.db_initialized = False
+if 'rag_system' not in st.session_state:
+    st.session_state.rag_system = None
 
 class RAGSystem:
     def __init__(self):
@@ -84,7 +86,7 @@ class RAGSystem:
                 filename VARCHAR(255) NOT NULL,
                 chunk_index INT NOT NULL,
                 content TEXT NOT NULL,
-                embedding VECTOR NOT NULL,
+                embedding JSON NOT NULL,
                 file_hash VARCHAR(64) NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 INDEX idx_filename (filename),
@@ -211,7 +213,6 @@ class RAGSystem:
             cursor = self.db_connection.cursor()
             
             # Get all documents and calculate cosine similarity in Python
-            # Note: This is less efficient than native vector search but works with standard MySQL
             cursor.execute("SELECT id, filename, content, embedding FROM documents")
             results = cursor.fetchall()
             cursor.close()
@@ -310,74 +311,84 @@ Answer:"""
         except Error as e:
             return 0
 
-# Initialize RAG system
-@st.cache_resource
-def get_rag_system():
-    return RAGSystem()
-
 def main():
     st.title("📚 RAG Document Q&A System")
     st.markdown("Upload documents and ask questions to get AI-powered answers!")
     
-    # Sidebar for configuration and stats
-    with st.sidebar:
-        st.header("⚙️ Configuration")
-        
-        # OpenAI API Key
-        openai_api_key = st.text_input(
-            "OpenAI API Key", 
-            type="password",
-            value=st.secrets("OPENAI_API_KEY", "")
-        )
-        
-        # Database configuration
-        st.subheader("TiDB Configuration")
-        db_host = st.text_input("Host", value=st.secrets("TIDB_HOST", ""))
-        db_port = st.number_input("Port", value=int(st.secrets("TIDB_PORT", "4000")))
-        db_user = st.text_input("User", value=st.secrets("TIDB_USER", ""))
-        db_password = st.text_input("Password", type="password", value=st.secrets("TIDB_PASSWORD", ""))
-        db_name = st.text_input("Database", value=st.secrets("TIDB_DATABASE", ""))
-        
-        # Initialize button
-        if st.button("Initialize System"):
-            rag = get_rag_system()
-            
-            if not openai_api_key:
-                st.error("Please provide OpenAI API Key")
-                return
-            
-            if not all([db_host, db_port, db_user, db_password, db_name]):
-                st.error("Please provide all database credentials")
-                return
-            
-            # Initialize OpenAI
-            if rag.initialize_openai(openai_api_key):
-                st.success("✅ OpenAI initialized")
-                
-                # Initialize database
-                if rag.initialize_database(db_host, db_port, db_user, db_password, db_name):
-                    st.success("✅ Database initialized")
-                    st.session_state.db_initialized = True
-                    st.session_state.documents_count = rag.get_document_count()
-                else:
-                    st.error("❌ Database initialization failed")
-            else:
-                st.error("❌ OpenAI initialization failed")
-        
-        # Stats
-        st.header("📊 Statistics")
-        st.metric("Documents Uploaded", st.session_state.documents_count)
-        if st.session_state.last_query_time:
-            st.metric("Last Query", st.session_state.last_query_time.strftime("%H:%M:%S"))
-    
-    # Check if system is initialized
+    # Auto-initialize system on first run
     if not st.session_state.db_initialized:
-        st.warning("Please initialize the system using the sidebar configuration.")
-        return
+        with st.spinner("🚀 Initializing system..."):
+            try:
+                # Get credentials from secrets
+                openai_api_key = st.secrets["OPENAI_API_KEY"]
+                db_host = st.secrets["TIDB_HOST"]
+                db_port = int(st.secrets["TIDB_PORT"])
+                db_user = st.secrets["TIDB_USER"]
+                db_password = st.secrets["TIDB_PASSWORD"]
+                db_name = st.secrets["TIDB_DATABASE"]
+                
+                # Initialize RAG system
+                rag = RAGSystem()
+                
+                # Initialize OpenAI
+                if rag.initialize_openai(openai_api_key):
+                    # Initialize database
+                    if rag.initialize_database(db_host, db_port, db_user, db_password, db_name):
+                        st.session_state.db_initialized = True
+                        st.session_state.rag_system = rag
+                        st.session_state.documents_count = rag.get_document_count()
+                        st.success("✅ System initialized successfully!")
+                        st.rerun()
+                    else:
+                        st.error("❌ Database connection failed")
+                        return
+                else:
+                    st.error("❌ OpenAI initialization failed")
+                    return
+                    
+            except KeyError as e:
+                st.error(f"❌ Missing secret: {e}")
+                st.info("Please ensure all required secrets are configured in your Streamlit app:")
+                st.code("""
+                OPENAI_API_KEY = "your-openai-api-key"
+                TIDB_HOST = "your-tidb-host"
+                TIDB_PORT = "4000"
+                TIDB_USER = "your-username"
+                TIDB_PASSWORD = "your-password"
+                TIDB_DATABASE = "your-database-name"
+                """)
+                return
+            except Exception as e:
+                st.error(f"❌ System initialization failed: {str(e)}")
+                return
     
-    rag = get_rag_system()
+    # Main interface (only shown after initialization)
+    rag = st.session_state.rag_system
     
-    # Main interface
+    # Status bar
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("📄 Documents", st.session_state.documents_count)
+    with col2:
+        st.metric("🔧 Status", "Ready" if st.session_state.db_initialized else "Not Ready")
+    with col3:
+        if st.session_state.last_query_time:
+            st.metric("⏰ Last Query", st.session_state.last_query_time.strftime("%H:%M:%S"))
+        else:
+            st.metric("⏰ Last Query", "Never")
+    
+    # Reset button (optional - for development/debugging)
+    with st.expander("🔧 System Controls", expanded=False):
+        if st.button("🔄 Reset System", help="Reset system and reinitialize"):
+            st.session_state.db_initialized = False
+            st.session_state.rag_system = None
+            st.session_state.documents_count = 0
+            st.session_state.last_query_time = None
+            st.rerun()
+    
+    st.divider()
+    
+    # Main functionality
     col1, col2 = st.columns([1, 1])
     
     with col1:
@@ -402,7 +413,7 @@ def main():
                     
                     # Check if document already exists
                     if rag.check_document_exists(uploaded_file.name, file_hash):
-                        st.warning("Document already exists in the database!")
+                        st.warning("⚠️ Document already exists in the database!")
                     else:
                         # Chunk the text
                         chunks = rag.chunk_text(text)
@@ -410,7 +421,7 @@ def main():
                         # Store chunks and embeddings
                         if rag.store_document_chunks(uploaded_file.name, chunks, file_hash):
                             st.success(f"✅ Document '{uploaded_file.name}' processed successfully!")
-                            st.info(f"Created {len(chunks)} chunks")
+                            st.info(f"📊 Created {len(chunks)} chunks")
                             st.session_state.documents_count = rag.get_document_count()
                         else:
                             st.error("❌ Failed to store document")
@@ -419,37 +430,41 @@ def main():
     
     with col2:
         st.header("❓ Ask a Question")
-        query = st.text_input(
+        query = st.text_area(
             "Enter your question:",
-            placeholder="What would you like to know about your documents?"
+            placeholder="What would you like to know about your documents?",
+            height=100
         )
         
-        if st.button("Get Answer", type="primary"):
+        if st.button("🔍 Get Answer", type="primary", use_container_width=True):
             if query:
-                with st.spinner("Searching for relevant information..."):
+                with st.spinner("🔍 Searching for relevant information..."):
                     # Search for similar chunks
                     similar_chunks = rag.search_similar_chunks(query, top_k=5)
                     
                     if similar_chunks:
-                        with st.spinner("Generating answer..."):
+                        with st.spinner("🤖 Generating answer..."):
                             # Generate answer
                             answer = rag.generate_answer(query, similar_chunks)
                             
                             # Display answer
-                            st.subheader("Answer:")
-                            st.write(answer)
+                            st.subheader("💡 Answer:")
+                            st.markdown(answer)
                             
                             # Display sources
-                            st.subheader("Sources:")
+                            st.subheader("📚 Sources:")
                             for i, chunk in enumerate(similar_chunks):
-                                with st.expander(f"Source {i+1}: {chunk['filename']} (Similarity: {chunk['similarity']:.4f})"):
+                                similarity_score = chunk['similarity']
+                                color = "🟢" if similarity_score > 0.8 else "🟡" if similarity_score > 0.6 else "🔴"
+                                
+                                with st.expander(f"{color} Source {i+1}: {chunk['filename']} (Similarity: {similarity_score:.4f})"):
                                     st.write(chunk['content'][:500] + "..." if len(chunk['content']) > 500 else chunk['content'])
                             
                             st.session_state.last_query_time = datetime.now()
                     else:
-                        st.warning("No relevant information found in the uploaded documents.")
+                        st.warning("⚠️ No relevant information found in the uploaded documents.")
             else:
-                st.error("Please enter a question.")
+                st.error("❌ Please enter a question.")
 
 if __name__ == "__main__":
     main()
