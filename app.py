@@ -203,7 +203,7 @@ class RAGSystem:
             st.error(f"Database insertion failed: {str(e)}")
             return False
     
-    def search_similar_chunks(self, query: str, top_k: int = 5) -> List[Dict[str, Any]]:
+    def search_similar_chunks(self, query: str, top_k: int = 3) -> List[Dict[str, Any]]:
         """Search for similar chunks using cosine similarity"""
         try:
             query_embedding = self.generate_embedding(query)
@@ -213,55 +213,19 @@ class RAGSystem:
             cursor = self.db_connection.cursor()
             
             # Get all documents and calculate cosine similarity in Python
-            cursor.execute("SELECT id, filename, content, embedding FROM documents")
+            cursor.execute("SELECT id, filename, content, vec_cosine_distance(embedding,query_embedding) AS dist FROM documents ORDER BY dist ASC")
             results = cursor.fetchall()
             cursor.close()
             
             if not results:
                 return []
-            
-            # Calculate cosine similarity
-            similarities = []
-            for row in results:
-                doc_id, filename, content, embedding_json = row
-                try:
-                    doc_embedding = json.loads(embedding_json)
-                    similarity = self.cosine_similarity(query_embedding, doc_embedding)
-                    similarities.append({
-                        "id": doc_id,
-                        "filename": filename,
-                        "content": content,
-                        "similarity": similarity
-                    })
-                except json.JSONDecodeError:
-                    continue
-            
-            # Sort by similarity (higher is better for cosine similarity)
-            similarities.sort(key=lambda x: x["similarity"], reverse=True)
-            
-            return similarities[:top_k]
+          
+            return results[:top_k]
         except Error as e:
             st.error(f"Search failed: {str(e)}")
             return []
     
-    def cosine_similarity(self, vec1: List[float], vec2: List[float]) -> float:
-        """Calculate cosine similarity between two vectors"""
-        try:
-            import numpy as np
-            vec1 = np.array(vec1)
-            vec2 = np.array(vec2)
-            
-            dot_product = np.dot(vec1, vec2)
-            norm_vec1 = np.linalg.norm(vec1)
-            norm_vec2 = np.linalg.norm(vec2)
-            
-            if norm_vec1 == 0 or norm_vec2 == 0:
-                return 0.0
-            
-            return dot_product / (norm_vec1 * norm_vec2)
-        except Exception:
-            return 0.0
-    
+   
     def generate_answer(self, query: str, context_chunks: List[Dict[str, Any]]) -> str:
         """Generate answer using OpenAI GPT"""
         try:
